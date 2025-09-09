@@ -789,20 +789,18 @@
             // System instruction as used in Puti-AI example
             SYSTEM_INSTRUCTION: {
                 parts: [{
-                    text: "You are an image generation AI. Your sole purpose is to create an image based on the user's text prompt and uploaded image(s). Do not respond with any text, greetings, or explanations. Only output the final image."
+                    text: "You are an image generation AI. Your sole purpose is to create an image based on the user's text prompt and uploaded image. Do not respond with any text, greetings, or explanations. Only output the final image."
                 }]
             },
             // Generation config as used in Puti-AI example, REMOVED responseMimeType
             GENERATION_CONFIG: {
                 responseModalities: ['IMAGE'] // Explicitly only request IMAGE
-            },
-            // NEW: Path for the brand logo image
-            BRAND_LOGO_PATH: 'logo/LiyuChillGuy.png', 
+            }
         };
 
         // --- Figure Generation Prompts (for different scene/style variations) ---
-        // The base prompt now explicitly references the two uploaded images by order.
-        const FIGURE_BASE_PROMPT = `指令：生成一張圖片。風格：超寫實商品攝影。內容：一個 1/7 比例的模型公仔，角色基於上傳的第一張圖片。場景：公仔在現代電腦桌上，電腦下方顯示發光的品牌標誌（參考上傳的第二張圖片），底座是透明圓形壓克力。旁邊的電腦螢幕顯示該模型的 ZBrush 3D 線框圖。螢幕旁有 BANDAI 風格的玩具包裝盒，盒面印有角色插畫及品牌標誌（參考上傳的第二張圖片）。光線明亮，細節豐富。`;
+        // The base prompt remains the same, but we will generate 3 variations of it.
+        const FIGURE_BASE_PROMPT = `指令：生成一張圖片。風格：超寫實商品攝影。內容：一個 1/7 比例的模型公仔，角色基於上傳的圖片。場景：公仔在現代電腦桌上，底座是透明圓形壓克力，且底座上顯示文字"Copyright © Liyuchiutiger Gongminshen"。旁邊的電腦螢幕顯示該模型的 ZBrush 3D 線框圖。螢幕旁有 BANDAI 風格的玩具包裝盒，盒面印有角色插畫。光線明亮，細節豐富。`;
 
 
         // --- Utility Functions ---
@@ -1398,8 +1396,8 @@
          * @param {Array<Object>} props.generatedImages - Array of generated image objects.
          * @param {boolean} props.isLoading - Whether images are currently being generated.
          * @param {number} props.progress - Generation progress percentage.
-         * @param {Function} props.onDownloadImage - Handler for downloading a single image.
-         * @param {Function} props.onRegenerateImage - Handler for regenerating a single image.
+         * @param {Function} props.onDownloadImage - Handler to download a single image.
+         * @param {Function} props.onRegenerateImage - Handler to regenerate a single image.
          * @param {Function} props.onDownloadAll - Handler to download all successful images as a zip.
          * @param {Function} props.onStartOver - Handler to reset the application.
          * @param {boolean} props.isAnyAiProcessActive - Flag to disable actions during AI processes.
@@ -1563,58 +1561,13 @@
             
             const [apiKey, setApiKey] = useState('');
 
-            // NEW: State for brand logo image
-            const [brandLogoBase64, setBrandLogoBase64] = useState(null);
-            const [brandLogoMimeType, setBrandLogoMimeType] = useState(null);
-            const [isBrandLogoLoading, setIsBrandLogoLoading] = useState(true);
-
-
-            // On component mount: load saved API key and brand logo
+            // On component mount: load saved API key
             useEffect(() => {
                 const savedApiKey = localStorage.getItem('geminiApiKey');
                 if (savedApiKey) {
                     setApiKey(savedApiKey);
                 }
-
-                // NEW: Load the brand logo image
-                const loadBrandLogo = async () => {
-                    setIsBrandLogoLoading(true); // Ensure loading state is active
-                    try {
-                        let currentPath = CONSTANTS.BRAND_LOGO_PATH;
-                        let response = await fetch(currentPath);
-                        let mimeType;
-                        let filename = 'LiyuChillGuy.png'; // Default for brand logo
-
-                        if (!response.ok) {
-                            console.warn(`Warning: Initial brand logo path '${currentPath}' failed with status ${response.status}. Attempting to load mascot SVG as fallback.`);
-                            currentPath = 'image/LiyuChillGuy.svg'; // Fallback path for mascot SVG
-                            response = await fetch(currentPath);
-                            if (!response.ok) {
-                                throw new Error(`Neither '${CONSTANTS.BRAND_LOGO_PATH}' nor '${currentPath}' could be loaded. Last status: ${response.status}`);
-                            }
-                            mimeType = 'image/svg+xml'; // SVG fallback
-                            filename = 'LiyuChillGuy.svg';
-                        } else {
-                            mimeType = response.headers.get('Content-Type') || (currentPath.endsWith('.png') ? 'image/png' : 'application/octet-stream');
-                        }
-
-                        const blob = await response.blob();
-                        const file = new File([blob], filename, { type: mimeType }); 
-                        const base64 = await toBase64(file);
-                        setBrandLogoBase64(base64);
-                        setBrandLogoMimeType(mimeType);
-                        console.log(`Brand logo loaded successfully from: ${response.url} with MIME type: ${mimeType}`); // Confirm success and path
-                        
-                    } catch (error) {
-                        console.error("Error loading brand logo image:", error);
-                        setAppError(setError, `無法載入品牌標誌圖片。錯誤訊息: ${error.message} 請確認檔案 '${CONSTANTS.BRAND_LOGO_PATH}' 是否存在於正確的路徑。`);
-                    } finally {
-                        setIsBrandLogoLoading(false);
-                    }
-                };
-                loadBrandLogo();
-
-            }, []); // Run once on mount
+            }, []);
 
             // Handle API key input changes (Debounced and Sanitized)
             const handleApiKeyChange = useCallback(
@@ -1664,30 +1617,20 @@
                     setGeneratedImages(prev => prev.map((img, index) => index === imageIndex ? { ...img, status: 'failed' } : img));
                     return;
                 }
-
-                // NEW: Check if brand logo is loaded
-                if (isBrandLogoLoading || !brandLogoBase64 || !brandLogoMimeType) {
-                    setAppError(setError, "品牌標誌圖片尚未載入完成，請稍候再試。");
-                    setGeneratedImages(prev => prev.map((img, index) => index === imageIndex ? { ...img, status: 'failed' } : img));
-                    return;
-                }
     
                 try {
                     const imageWithoutPrefix = uploadedImage.split(',')[1];
-                    const brandLogoWithoutPrefix = brandLogoBase64.split(',')[1]; // Get the base64 part of the brand logo
                     const modelInstruction = getModelInstruction(imageToRegenerate.prompt); // Use the prompt from the task
                     
-                    // NEW: Include both user's character image and brand logo in the parts array
-                    const parts = [
-                        CONSTANTS.SYSTEM_INSTRUCTION.parts[0],
-                        { text: modelInstruction },
-                        { inlineData: { mimeType: uploadedImageMimeType, data: imageWithoutPrefix } }, // First image: User's character
-                        { inlineData: { mimeType: brandLogoMimeType, data: brandLogoWithoutPrefix } }  // Second image: Brand logo
-                    ];
-
                     const payload = {
-                        contents: [{ parts }],
-                        generationConfig: CONSTANTS.GENERATION_CONFIG,
+                        contents: [{
+                            parts: [
+                                CONSTANTS.SYSTEM_INSTRUCTION.parts[0], // Add the system instruction part
+                                { text: modelInstruction },
+                                { inlineData: { mimeType: uploadedImageMimeType, data: imageWithoutPrefix } }
+                            ]
+                        }],
+                        generationConfig: CONSTANTS.GENERATION_CONFIG, // Add the generation config
                     };
 
                     const imageUrl = await generateImageWithRetry(payload, getActiveApiKey);
@@ -1703,7 +1646,7 @@
                         index === imageIndex ? { ...img, status: 'failed' } : img
                     ));
                 }
-            }, [generatedImages, uploadedImage, uploadedImageMimeType, getActiveApiKey, setError, figureGenerationTasks, isBrandLogoLoading, brandLogoBase64, brandLogoMimeType]);
+            }, [generatedImages, uploadedImage, uploadedImageMimeType, getActiveApiKey, setError, figureGenerationTasks]);
             
             // Generate all images logic
             const handleGenerateClick = useCallback(async () => {
@@ -1716,20 +1659,12 @@
                     setAppError(setError, "請提供您的 Google Gemini API 金鑰來生成模型公仔。");
                     return;
                 }
-
-                // NEW: Check if brand logo is loaded
-                if (isBrandLogoLoading || !brandLogoBase64 || !brandLogoMimeType) {
-                    setAppError(setError, "品牌標誌圖片尚未載入完成，請稍候。");
-                    return;
-                }
                 
                 setIsLoading(true);
                 setError(null);
                 setGeneratedImages([]);
                 
                 const imageWithoutPrefix = uploadedImage.split(',')[1];
-                const brandLogoWithoutPrefix = brandLogoBase64.split(',')[1]; // Get the base64 part of the brand logo
-
                 const initialPlaceholders = figureGenerationTasks.map(task => ({
                     id: task.id,
                     cleanId: task.cleanId, // Store cleanId for download
@@ -1749,18 +1684,18 @@
                     try {
                         const modelInstruction = getModelInstruction(task.prompt);
                         
-                        // NEW: Include both user's character image and brand logo in the parts array
-                        const parts = [
-                            CONSTANTS.SYSTEM_INSTRUCTION.parts[0],
-                            { text: modelInstruction },
-                            { inlineData: { mimeType: uploadedImageMimeType, data: imageWithoutPrefix } }, // First image: User's character
-                            { inlineData: { mimeType: brandLogoMimeType, data: brandLogoWithoutPrefix } }  // Second image: Brand logo
-                        ];
-
+                        // --- 這裡加入 systemInstruction 和 generationConfig ---
                         const payload = {
-                            contents: [{ parts }],
-                            generationConfig: CONSTANTS.GENERATION_CONFIG,
+                            contents: [{
+                                parts: [
+                                    CONSTANTS.SYSTEM_INSTRUCTION.parts[0], // Explicitly add system instruction
+                                    { text: modelInstruction },
+                                    { inlineData: { mimeType: uploadedImageMimeType, data: imageWithoutPrefix } }
+                                ]
+                            }],
+                            generationConfig: CONSTANTS.GENERATION_CONFIG, // Explicitly add generation config
                         };
+                        // --------------------------------------------------
 
                         const imageUrl = await generateImageWithRetry(payload, getActiveApiKey);
 
@@ -1779,7 +1714,7 @@
                 }
 
                 setIsLoading(false);
-            }, [uploadedImage, uploadedImageMimeType, getActiveApiKey, figureGenerationTasks, setError, isBrandLogoLoading, brandLogoBase64, brandLogoMimeType]);
+            }, [uploadedImage, uploadedImageMimeType, getActiveApiKey, figureGenerationTasks, setError]);
 
             const triggerDownload = useCallback((href, fileName) => {
                 const link = document.createElement('a');
@@ -1806,7 +1741,7 @@
             }, []);
 
             // Check if any AI-related process is active to disable general buttons
-            const isAnyAiProcessActive = isLoading || isBrandLogoLoading; // NEW: Also consider brand logo loading
+            const isAnyAiProcessActive = isLoading;
 
             const progress = useMemo(() => {
                 const completed = generatedImages.filter(img => img.status === 'success' || img.status === 'failed').length;
@@ -1843,8 +1778,7 @@
                             <div className="generate-button-area">
                                 <Button
                                     onClick={handleGenerateClick}
-                                    // NEW: Also check if brand logo is loaded before enabling the button
-                                    disabled={!uploadedImage || !uploadedImageMimeType || isAnyAiProcessActive || !getActiveApiKey() || isBrandLogoLoading}
+                                    disabled={!uploadedImage || !uploadedImageMimeType || isAnyAiProcessActive || !getActiveApiKey()}
                                     primary
                                     ariaLabel="生成模型公仔"
                                 >
@@ -1853,11 +1787,6 @@
                                             <>
                                                 <LoadingSpinner className="fa-icon-standard" />
                                                 <span>{`生成中... (${Math.round(progress)}%)`}</span>
-                                            </>
-                                        ) : isBrandLogoLoading ? ( // NEW: Show brand logo loading state
-                                            <>
-                                                <LoadingSpinner className="fa-icon-standard" />
-                                                <span>載入品牌標誌中...</span>
                                             </>
                                         ) : (
                                             <>

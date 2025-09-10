@@ -1,5 +1,3 @@
---- START OF FILE index.html ---
-
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -783,12 +781,11 @@
             },
             MAX_RETRIES: 5,
             INITIAL_BACKOFF: 1000,
-            FIXED_GENERATE_COUNT: 1, // Changed from 3 to 1 as requested
+            FIXED_GENERATE_COUNT: 3, // Generate 3 variations for choice
             DEBOUNCE_DELAY: 300,
             GENERATION_DELAY: 500, // Small delay between image generations for visual effect
             MAX_IMAGE_SIZE_MB: 8, // Increased max size for detailed character images
             MAX_IMAGE_DIMENSIONS: { width: 4096, height: 4096 }, // Increased max dimensions
-            LOGO_IMAGE_PATH: 'logo/LiyuChillGuy.png', // New constant for logo path
             // System instruction as used in Puti-AI example
             SYSTEM_INSTRUCTION: {
                 parts: [{
@@ -803,8 +800,7 @@
 
         // --- Figure Generation Prompts (for different scene/style variations) ---
         // The base prompt remains the same, but we will generate 3 variations of it.
-        // Updated prompt to include the LiyuChillGuy LOGO
-        const FIGURE_BASE_PROMPT = `指令：生成一張圖片。風格：超寫實商品攝影。內容：一個 1/7 比例的模型公仔，角色基於上傳的圖片。場景：公仔在現代電腦桌上，底座是透明圓形壓克力。旁邊的電腦螢幕顯示該模型的 ZBrush 3D 線框圖。螢幕旁有 BANDAI 風格的玩具包裝盒，盒面印有角色插畫，包裝盒上帶有上傳的 LiyuChillGuy LOGO 圖片作為品牌標誌。光線明亮，細節豐富。`; // Modified here
+        const FIGURE_BASE_PROMPT = `指令：生成一張圖片。風格：超寫實商品攝影。內容：一個 1/7 比例的模型公仔，角色基於上傳的圖片。場景：公仔在現代電腦桌上，底座是透明圓形壓克力。旁邊的電腦螢幕顯示該模型的 ZBrush 3D 線框圖。螢幕旁有 BANDAI 風格的玩具包裝盒，盒面印有角色插畫。光線明亮，細節豐富。`;
 
 
         // --- Utility Functions ---
@@ -819,18 +815,6 @@
             reader.readAsDataURL(file);
             reader.onload = () => resolve(reader.result);
             reader.onerror = error => reject(error);
-        });
-
-        /**
-         * Converts a Blob object to a Base64 data URL.
-         * @param {Blob} blob - The blob to convert.
-         * @returns {Promise<string>} A promise that resolves with the Base64 data URL.
-         */
-        const blobToBase64 = blob => new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
         });
 
         /**
@@ -1412,7 +1396,7 @@
          * @param {Array<Object>} props.generatedImages - Array of generated image objects.
          * @param {boolean} props.isLoading - Whether images are currently being generated.
          * @param {number} props.progress - Generation progress percentage.
-         * @param {Function} props.onDownloadImage - Handler for downloading a single image.
+         * @param {Function} props.onDownloadImage - Handler to download a single image.
          * @param {Function} props.onRegenerateImage - Handler to regenerate a single image.
          * @param {Function} props.onDownloadAll - Handler to download all successful images as a zip.
          * @param {Function} props.onStartOver - Handler to reset the application.
@@ -1429,7 +1413,7 @@
             isAnyAiProcessActive 
         }) => {
             const resultsRef = useRef(null);
-            const [isZipping, setIsZipping] = useState(false); // Kept for consistency, but not used for single download
+            const [isZipping, setIsZipping] = useState(false);
 
             useEffect(() => {
                 if (isLoading) {
@@ -1437,14 +1421,51 @@
                 }
             }, [isLoading]);
 
-            const handleDownloadSingleImage = useCallback(() => {
-                const successfulImage = generatedImages.find(img => img.status === 'success');
-                if (successfulImage) {
-                    onDownloadImage(successfulImage.imageUrl, successfulImage.id);
-                } else {
-                    alert("沒有可以下載的模型公仔圖片。");
+            const handleDownloadAllAsZip = useCallback(async () => {
+                if (isZipping || typeof window.JSZip === 'undefined') {
+                    if (typeof window.JSZip === 'undefined') {
+                        alert("壓縮程式庫尚未載入，請稍後再試。"); // Simpler alert for internal component
+                    }
+                    return;
                 }
-            }, [generatedImages, onDownloadImage]);
+                
+                setIsZipping(true);
+                
+                try {
+                    const zip = new window.JSZip();
+                    const successfulImages = generatedImages.filter(img => img.status === 'success');
+
+                    if (successfulImages.length === 0) {
+                        alert("沒有可以打包的模型公仔圖片。"); // Simpler alert
+                        return;
+                    }
+
+                    const imagePromises = successfulImages.map(async (img) => {
+                        const response = await fetch(img.imageUrl);
+                        const blob = await response.blob();
+                        const fileName = `figure-${img.cleanId}.png`; // Use cleanId for file naming
+                        zip.file(fileName, blob);
+                    });
+
+                    await Promise.all(imagePromises);
+
+                    const content = await zip.generateAsync({ type: "blob" });
+                    
+                    const link = document.createElement("a");
+                    link.href = URL.createObjectURL(content);
+                    link.download = "ai-figure-pack.zip";
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(link.href);
+
+                } catch (err) {
+                    console.error("建立壓縮檔時發生錯誤:", err);
+                    alert("建立壓縮檔失敗，請再試一次。"); // Simpler alert
+                } finally {
+                    setIsZipping(false);
+                }
+            }, [generatedImages, isZipping]);
 
 
             if (!isLoading && generatedImages.length === 0) return null;
@@ -1508,15 +1529,21 @@
                                 <i className="fa-solid fa-arrow-rotate-right fa-icon-medium"></i>
                                 重新開始
                             </Button>
-                            {/* Only show download if all (1) are successful, and use single download logic */}
-                            {generatedImages.length > 0 && generatedImages.every(img => img.status === 'success') && ( 
-                                <Button onClick={handleDownloadSingleImage} primary disabled={isAnyAiProcessActive} ariaLabel="下載已成功生成的模型公仔圖片">
-                                    <div className="flex items-center gap-2">
-                                        <i className="fa-solid fa-download fa-icon-standard"></i>
-                                        <span>下載圖片</span>
-                                    </div>
-                                </Button>
-                            )}
+                            <Button onClick={handleDownloadAllAsZip} primary disabled={isZipping || isAnyAiProcessActive} ariaLabel="打包下載所有已成功生成的模型公仔圖片">
+                                <div className="flex items-center gap-2">
+                                {isZipping ? (
+                                    <>
+                                    <LoadingSpinner className="fa-icon-medium" />
+                                    <span>打包中...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <i className="fa-solid fa-file-zipper fa-icon-standard"></i>
+                                        <span>打包下載</span>
+                                    </>
+                                )}
+                                </div>
+                            </Button>
                         </div>
                     )}
                 </div>
@@ -1534,46 +1561,13 @@
             
             const [apiKey, setApiKey] = useState('');
 
-            // New state for the logo image
-            const [logoImageDetails, setLogoImageDetails] = useState({
-                base64: null,
-                mimeType: null,
-                loaded: false,
-                error: false,
-            });
-
-            // On component mount: load saved API key and the logo image
+            // On component mount: load saved API key
             useEffect(() => {
                 const savedApiKey = localStorage.getItem('geminiApiKey');
                 if (savedApiKey) {
                     setApiKey(savedApiKey);
                 }
-
-                // Function to fetch and convert the logo image to Base64
-                const loadLogoImage = async () => {
-                    try {
-                        const response = await fetch(CONSTANTS.LOGO_IMAGE_PATH);
-                        if (!response.ok) {
-                            throw new Error(`Failed to load logo image: ${response.statusText}`);
-                        }
-                        const blob = await response.blob();
-                        const base64 = await blobToBase64(blob);
-                        setLogoImageDetails({
-                            base64,
-                            mimeType: blob.type,
-                            loaded: true,
-                            error: false,
-                        });
-                        console.log('Logo image loaded successfully.');
-                    } catch (err) {
-                        console.error('Error loading logo image:', err);
-                        setLogoImageDetails(prev => ({ ...prev, error: true, loaded: true }));
-                        setAppError(setError, `無法載入品牌 LOGO 圖片 (${CONSTANTS.LOGO_IMAGE_PATH})，生成圖片時可能無法顯示 LOGO。`);
-                    }
-                };
-
-                loadLogoImage();
-            }, []); // Empty dependency array means this runs once on mount
+            }, []);
 
             // Handle API key input changes (Debounced and Sanitized)
             const handleApiKeyChange = useCallback(
@@ -1602,8 +1596,8 @@
             const figureGenerationTasks = useMemo(() => {
                 const tasks = [];
                 for (let i = 0; i < CONSTANTS.FIXED_GENERATE_COUNT; i++) {
-                    const id = `現代電腦桌公仔`; // Simplified ID for single generation
-                    const cleanId = `modern-computer-desk-figure`;
+                    const id = `現代電腦桌公仔 #${i + 1}`;
+                    const cleanId = `modern-computer-desk-figure-${i + 1}`;
                     tasks.push({ id, cleanId, prompt: FIGURE_BASE_PROMPT });
                 }
                 return tasks;
@@ -1628,27 +1622,15 @@
                     const imageWithoutPrefix = uploadedImage.split(',')[1];
                     const modelInstruction = getModelInstruction(imageToRegenerate.prompt); // Use the prompt from the task
                     
-                    // Construct the parts array for Gemini API
-                    const parts = [
-                        CONSTANTS.SYSTEM_INSTRUCTION.parts[0],
-                        { text: modelInstruction },
-                        { inlineData: { mimeType: uploadedImageMimeType, data: imageWithoutPrefix } }
-                    ];
-
-                    // Add logo image if loaded successfully
-                    if (logoImageDetails.loaded && !logoImageDetails.error && logoImageDetails.base64) {
-                        parts.push({
-                            inlineData: { mimeType: logoImageDetails.mimeType, data: logoImageDetails.base64.split(',')[1] }
-                        });
-                    } else if (logoImageDetails.error) {
-                        console.warn("Skipping logo image in payload due to previous loading error.");
-                    } else if (logoImageDetails.loaded && !logoImageDetails.base64) {
-                        console.warn("Skipping logo image in payload because base64 data is null even if loaded.");
-                    }
-
                     const payload = {
-                        contents: [{ parts }],
-                        generationConfig: CONSTANTS.GENERATION_CONFIG,
+                        contents: [{
+                            parts: [
+                                CONSTANTS.SYSTEM_INSTRUCTION.parts[0], // Add the system instruction part
+                                { text: modelInstruction },
+                                { inlineData: { mimeType: uploadedImageMimeType, data: imageWithoutPrefix } }
+                            ]
+                        }],
+                        generationConfig: CONSTANTS.GENERATION_CONFIG, // Add the generation config
                     };
 
                     const imageUrl = await generateImageWithRetry(payload, getActiveApiKey);
@@ -1664,7 +1646,7 @@
                         index === imageIndex ? { ...img, status: 'failed' } : img
                     ));
                 }
-            }, [generatedImages, uploadedImage, uploadedImageMimeType, getActiveApiKey, setError, figureGenerationTasks, logoImageDetails]); // Added logoImageDetails to dependencies
+            }, [generatedImages, uploadedImage, uploadedImageMimeType, getActiveApiKey, setError, figureGenerationTasks]);
             
             // Generate all images logic
             const handleGenerateClick = useCallback(async () => {
@@ -1702,28 +1684,18 @@
                     try {
                         const modelInstruction = getModelInstruction(task.prompt);
                         
-                        // Construct the parts array for Gemini API
-                        const parts = [
-                            CONSTANTS.SYSTEM_INSTRUCTION.parts[0],
-                            { text: modelInstruction },
-                            { inlineData: { mimeType: uploadedImageMimeType, data: imageWithoutPrefix } }
-                        ];
-
-                        // Add logo image if loaded successfully
-                        if (logoImageDetails.loaded && !logoImageDetails.error && logoImageDetails.base64) {
-                            parts.push({
-                                inlineData: { mimeType: logoImageDetails.mimeType, data: logoImageDetails.base64.split(',')[1] }
-                            });
-                        } else if (logoImageDetails.error) {
-                            console.warn("Skipping logo image in payload due to previous loading error.");
-                        } else if (logoImageDetails.loaded && !logoImageDetails.base64) {
-                            console.warn("Skipping logo image in payload because base64 data is null even if loaded.");
-                        }
-
+                        // --- 這裡加入 systemInstruction 和 generationConfig ---
                         const payload = {
-                            contents: [{ parts }],
-                            generationConfig: CONSTANTS.GENERATION_CONFIG,
+                            contents: [{
+                                parts: [
+                                    CONSTANTS.SYSTEM_INSTRUCTION.parts[0], // Explicitly add system instruction
+                                    { text: modelInstruction },
+                                    { inlineData: { mimeType: uploadedImageMimeType, data: imageWithoutPrefix } }
+                                ]
+                            }],
+                            generationConfig: CONSTANTS.GENERATION_CONFIG, // Explicitly add generation config
                         };
+                        // --------------------------------------------------
 
                         const imageUrl = await generateImageWithRetry(payload, getActiveApiKey);
 
@@ -1742,7 +1714,7 @@
                 }
 
                 setIsLoading(false);
-            }, [uploadedImage, uploadedImageMimeType, getActiveApiKey, figureGenerationTasks, setError, logoImageDetails]); // Added logoImageDetails to dependencies
+            }, [uploadedImage, uploadedImageMimeType, getActiveApiKey, figureGenerationTasks, setError]);
 
             const triggerDownload = useCallback((href, fileName) => {
                 const link = document.createElement('a');
@@ -1806,7 +1778,7 @@
                             <div className="generate-button-area">
                                 <Button
                                     onClick={handleGenerateClick}
-                                    disabled={!uploadedImage || !uploadedImageMimeType || isAnyAiProcessActive || !getActiveApiKey() || !logoImageDetails.loaded} // Disable if logo not loaded
+                                    disabled={!uploadedImage || !uploadedImageMimeType || isAnyAiProcessActive || !getActiveApiKey()}
                                     primary
                                     ariaLabel="生成模型公仔"
                                 >
@@ -1819,7 +1791,6 @@
                                         ) : (
                                             <>
                                                 <i className="fa-solid fa-magic fa-icon-standard"></i>
-                                                {/* Updated button text for single generation */}
                                                 <span>模型公仔神生成 ({CONSTANTS.FIXED_GENERATE_COUNT} 張)</span>
                                             </>
                                         )}
@@ -1833,7 +1804,7 @@
                                 progress={progress}
                                 onDownloadImage={handleDownloadRequest}
                                 onRegenerateImage={regenerateImageAtIndex}
-                                onDownloadAll={handleDownloadRequest} // Will be handled internally by ResultsDisplay (now downloads single)
+                                onDownloadAll={handleDownloadRequest} // Will be handled internally by ResultsDisplay
                                 onStartOver={handleStartOver}
                                 isAnyAiProcessActive={isAnyAiProcessActive}
                             />

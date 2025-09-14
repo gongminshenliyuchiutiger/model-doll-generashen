@@ -786,13 +786,15 @@
             GENERATION_DELAY: 500, // Small delay between image generations for visual effect
             MAX_IMAGE_SIZE_MB: 8, // Increased max size for detailed character images
             MAX_IMAGE_DIMENSIONS: { width: 4096, height: 4096 }, // Increased max dimensions
-            // System instruction as used in Puti-AI example
+            
+
             SYSTEM_INSTRUCTION: {
                 parts: [{
                     text: "You are an image generation AI. Your sole purpose is to create an image based on the user's text prompt and uploaded image. Do not respond with any text, greetings, or explanations. Only output the final image."
                 }]
             },
-            // Generation config as used in Puti-AI example, REMOVED responseMimeType
+            
+
             GENERATION_CONFIG: {
                 responseModalities: ['IMAGE'] // Explicitly only request IMAGE
             }
@@ -920,7 +922,8 @@
                         throw new Error('API 回應格式無效，缺少候選項目。');
                     }
 
-                    // --- Puti-AI 範例的關鍵檢查點 ---
+                    
+
                     // 1. 檢查完成原因 (finishReason)
                     if (candidate.finishReason && candidate.finishReason !== 'STOP') {
                         throw new Error(`圖片生成因 '${candidate.finishReason}' 而停止。這可能是因為內容不適當、長度限制或其他內部原因。`);
@@ -934,7 +937,8 @@
                             .join(', ');
                         throw new Error(`請求因安全考量被拒絕。偵測到類別：${blockedCategories}。請嘗試使用不同的角色圖片或提示詞。`);
                     }
-                    // --- 結束 Puti-AI 範例的關鍵檢查點 ---
+                    
+
                     
                     const base64Data = candidate?.content?.parts?.[0]?.inlineData?.data;
 
